@@ -1,0 +1,27 @@
+# ── Secrets (never commit) ────────────────────────────────────────────────────
+**/appsettings.Local.json
+**/*.local.json
+**/*.secrets.json
+.env
+.env.*
+
+# ── .NET build outputs ────────────────────────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+.vscode/
+
+# ── NuGet ─────────────────────────────────────────────────────────────────────
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

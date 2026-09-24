@@ -1,0 +1,158 @@
+kind: workflow
+trigger:
+  kind: OnConversationStart
+  id: trigger_wf
+  actions:
+    - kind: SetVariable
+      id: node-1779287768623
+      variable: Local.userQuery
+      value: =System.LastMessage.Text
+    - kind: InvokeAzureAgent
+      id: agent1
+      agent:
+        name: RAG-Planner
+      description: Plans research as parallel string arrays
+      conversationId: =System.ConversationId
+      input:
+        messages: =Local.userQuery
+      output:
+        autoSend: false
+        responseObject: Local.plan
+    - kind: SetVariable
+      id: set-step-count
+      variable: Local.stepCount
+      value: =CountRows(Local.plan.subQuestions)
+    - kind: SetVariable
+      id: init-step-index
+      variable: Local.stepIndex
+      value: =0
+    - kind: SetVariable
+      id: init-research-history
+      variable: Local.researchHistory
+      value: =""
+    - kind: SetVariable
+      id: init-distilled-contexts
+      variable: Local.distilledContexts
+      value: =""
+    - kind: ConditionGroup
+      id: step-loop
+      conditions:
+        - id: step-loop-continue
+          condition: =((Local.stepCount > 0) && (Local.stepIndex < Local.stepCount))
+          actions:
+            - kind: SetVariable
+              id: set-current-subquestion
+              variable: Local.currentSubQuestion
+              value: =Index(Local.plan.subQuestions, Local.stepIndex + 1).Value
+            - kind: SetVariable
+              id: set-current-tool
+              variable: Local.currentTool
+              value: =Index(Local.plan.tools, Local.stepIndex + 1).Value
+            - kind: InvokeAzureAgent
+              id: node-1779291756007
+              agent:
+                name: RAG-QueryRewriter
+              conversationId: =System.ConversationId
+              input:
+                messages: '=Concat("Sub-question: ", Local.currentSubQuestion, "\n\nPrior findings: ", Local.researchHistory)'
+              output:
+                autoSend: false
+                messages: Local.rewrittenQuery
+            - kind: ConditionGroup
+              id: node-1779291861355
+              conditions:
+                - id: if-search-docs
+                  condition: =Local.currentTool = "search_docs"
+                  actions:
+                    - kind: InvokeAzureAgent
+                      id: node-1779292239543
+                      agent:
+                        name: RAG-Search
+                      conversationId: =System.ConversationId
+                      input:
+                        messages: =Local.rewrittenQuery
+                      output:
+                        autoSend: false
+                        messages: Local.searchResults
+              elseActions:
+                - kind: InvokeAzureAgent
+                  id: node-1779295213708
+                  agent:
+                    name: RAG-Search
+                  conversationId: =System.ConversationId
+                  input:
+                    messages: '=Concat("Search the web for: ", Local.rewrittenQuery)'
+                  output:
+                    autoSend: false
+                    messages: Local.searchResults
+            - kind: InvokeAzureAgent
+              id: node-1779295439384
+              agent:
+                name: RAG-Distiller
+              conversationId: =System.ConversationId
+              input:
+                messages: '=Concat("Question: ", Local.currentSubQuestion, "\n\nEvidence:\n", Local.searchResults)'
+              output:
+                autoSend: false
+                messages: Local.distilledContext
+            - kind: SetVariable
+              id: node-1779295549925
+              variable: Local.distilledContexts
+              value: '=Concat(Local.distilledContexts, "\n\n---\nStep ", Text(Local.stepIndex + 1), ": ", Local.distilledContext)'
+            - kind: InvokeAzureAgent
+              id: node-1779295417038
+              agent:
+                name: RAG-Reflection
+              conversationId: =System.ConversationId
+              input:
+                messages: '=Concat("Question: ", Local.currentSubQuestion, "\n\nDistilled evidence: ", Local.distilledContext)'
+              output:
+                autoSend: false
+                messages: Local.reflection
+            - kind: SetVariable
+              id: node-1779295780500
+              variable: Local.researchHistory
+              value: '=Concat(Local.researchHistory, "\n- Step ", Text(Local.stepIndex + 1), ": ", Local.reflection)'
+            - kind: InvokeAzureAgent
+              id: node-1779295853265
+              agent:
+                name: RAG-Policy
+              conversationId: =System.ConversationId
+              input:
+                messages: '=Concat("Original question: ", Local.userQuery, "\n\nCompleted research:\n", Local.researchHistory, "\n\nCurrent step: ", Text(Local.stepIndex + 1), " of ", Text(Local.stepCount))'
+              output:
+                autoSend: false
+                responseObject: Local.decision
+            - kind: ConditionGroup
+              id: node-1779298093624
+              conditions:
+                - id: if-finish
+                  condition: =Local.decision.action = "FINISH"
+                  actions:
+                    - kind: SetVariable
+                      id: force-exit
+                      variable: Local.stepIndex
+                      value: =Local.stepCount
+              elseActions:
+                - kind: SetVariable
+                  id: node-1779298187608
+                  variable: Local.stepIndex
+                  value: =Local.stepIndex + 1
+            - kind: GotoAction
+              id: goto-step-loop
+              actionId: step-loop
+      elseActions: []
+    - kind: InvokeAzureAgent
+      id: node-1779298281752
+      agent:
+        name: RAG-Synthesis
+      conversationId: =System.ConversationId
+      input:
+        messages: '=Concat("Original question: ", Local.userQuery, "\n\nAll research evidence:\n", Local.distilledContexts, "\n\nResearch history:\n", Local.researchHistory)'
+      output:
+        autoSend: true
+    - kind: EndConversation
+      id: node-1779288766106
+id: ""
+name: Agentic-RAG
+description: ""
